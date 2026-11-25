@@ -35,17 +35,23 @@ function fillBoard(world) {
 }
 
 // Wide cover: 3 tickets, wok mid-cook with steam, one plated dish ready,
-// full HUD — all six required elements in one frame.
+// full HUD — all six required elements in one frame. Staged by playing
+// the real rules: serve dish one (score > 0), plate dish two, cook dish
+// three halfway with a perfect toss.
 function stageWide(world) {
   startGame(world);
   fillBoard(world);
   const first = world.tickets[0].recipeId;
   const second = world.tickets[1].recipeId;
-  cookRecipe(world, first, 6.5); // finishes cooking -> plated, ready to serve
-  const secondRecipe = RECIPE_BY_ID[second];
-  // Bowl the second dish in full, then cook it halfway: wok mid-cook with
-  // steam while the first dish waits on the plate.
-  for (const id of secondRecipe.ingredients) addIngredient(world, id);
+  const third = world.tickets[2].recipeId;
+  cookRecipe(world, first, 6.5); // finishes cooking -> plated
+  serve(world); // real serve: score > 0, served 1
+  fillBoard(world);
+  cookRecipe(world, second, 6.5); // finishes cooking -> plated, ready to serve
+  // Third dish mid-cook in the wok with steam + a perfect toss,
+  // while the second dish waits on the plate.
+  const thirdRecipe = RECIPE_BY_ID[third];
+  for (const id of thirdRecipe.ingredients) addIngredient(world, id);
   startCooking(world);
   stepSeconds(world, 3.0);
   perfectToss(world);
@@ -72,16 +78,21 @@ function stageAssembly(world) {
   return { screen: 'play', fx: { flame: 1 } };
 }
 
-// Serve: a plated dish, happy customer, score and combo on the board.
+// Serve: two dishes really served (score, served count and combo all
+// earned through the real serve rules), third dish plated and ready.
 function stageServe(world) {
   startGame(world);
   fillBoard(world);
   const first = world.tickets[0].recipeId;
-  cookRecipe(world, first, 6.5); // plated and ready
-  world.score = 240;
-  world.served = 2;
-  world.combo = 3;
-  world.bestCombo = 3;
+  const second = world.tickets[1].recipeId;
+  const third = world.tickets[2].recipeId;
+  cookRecipe(world, first, 6.5); // plated
+  serve(world); // served 1
+  fillBoard(world);
+  cookRecipe(world, second, 6.5); // plated
+  serve(world); // served 2, combo grows
+  fillBoard(world);
+  cookRecipe(world, third, 6.5); // plated and ready
   stepSeconds(world, 0.5);
   return { screen: 'play', fx: { flame: 0 } };
 }

@@ -464,11 +464,12 @@ function drawWokStation(ctx, world, pointer, fx) {
     ctx.shadowColor = COLORS.neonOrange;
     ctx.shadowBlur = 30;
     ctx.beginPath();
-    ctx.ellipse(cx, cy - 30, 70 * fx.flame + 20, 44 * fx.flame + 10, 0, 0, Math.PI * 2);
+    // Flame sits above the noodle pile, not over it, so the dish stays visible.
+    ctx.ellipse(cx, cy - 38, 55 * fx.flame + 15, 32 * fx.flame + 8, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = COLORS.neonYellow;
     ctx.beginPath();
-    ctx.ellipse(cx, cy - 24, 40 * fx.flame + 10, 26 * fx.flame + 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy - 32, 32 * fx.flame + 8, 20 * fx.flame + 5, 0, 0, Math.PI * 2);
     ctx.fill();
     // The "PERFECT TOSS!" banner itself lives in drawHud's single
     // announcement lane, so it never collides with the wok header.
