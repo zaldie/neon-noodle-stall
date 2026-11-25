@@ -3,18 +3,164 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Neon Noodle Stall — a night-market cooking game</title>
+<title>Evening Noodle House — a dusk noodle shop game</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230d0a1a'/%3E%3Cpath d='M2 8h12l-2 5H4z' fill='%23ff9f1c'/%3E%3Crect x='9' y='2' width='1.4' height='9' fill='%23ffe66d' transform='rotate(18 9 2)'/%3E%3Crect x='11.5' y='2' width='1.4' height='9' fill='%23ff5d8f' transform='rotate(18 11.5 2)'/%3E%3C/svg%3E">
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0a1a; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1030; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
+  #hud { position: fixed; inset: 0; pointer-events: none; font-family: "Trebuchet MS", Verdana, sans-serif; color: #fff7e6; }
+  #hud button { pointer-events: auto; font-family: inherit; cursor: pointer; }
+  .hidden { display: none !important; }
+  .panel { background: rgba(24, 14, 36, 0.85); border: 2px solid #6b4a2f; border-radius: 12px; }
+
+  /* ---- top bar ---- */
+  #topbar { position: absolute; top: 10px; left: 10px; right: 10px; height: 96px; display: flex; gap: 10px; }
+  #brand { flex: 0 0 240px; padding: 10px 14px; display: flex; flex-direction: column; justify-content: center; }
+  #brand h1 { margin: 0; font-size: 24px; color: #ffd97a; letter-spacing: 1px; }
+  #brand p { margin: 2px 0 0; font-size: 13px; color: #c9b8e8; }
+  #order-board { flex: 1; padding: 8px 12px; }
+  #order-board h2 { margin: 0 0 6px; font-size: 13px; letter-spacing: 2px; color: #ff9a5c; }
+  #tickets { display: flex; gap: 8px; }
+  .ticket { flex: 1; background: #fff3d6; color: #2a1a3a; border-radius: 8px; padding: 5px 8px;
+    display: grid; grid-template-columns: 26px 1fr auto; column-gap: 6px; align-items: center; }
+  .ticket .face { font-size: 20px; }
+  .ticket .tname { font-size: 14px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ticket .tdots { display: flex; gap: 3px; }
+  .ticket .ptime { font-size: 14px; font-weight: bold; }
+  .ticket .trow2 { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; }
+  .ticket .pbar { flex: 1; height: 7px; background: rgba(0,0,0,0.18); border-radius: 4px; overflow: hidden; }
+  .ticket .pfill { display: block; height: 100%; border-radius: 4px; }
+  .ticket .pfill.ok { background: #39c25a; }
+  .ticket .pfill.warn { background: #e8b400; }
+  .ticket .pfill.bad { background: #e83b30; }
+  .ticket-empty { color: #c9b8e8; font-size: 14px; padding: 10px 4px; }
+  #stats { flex: 0 0 250px; padding: 8px 14px; display: flex; flex-direction: column; justify-content: center; text-align: right; }
+  #stats .row1 { font-size: 20px; font-weight: bold; color: #ffd60a; }
+  #timer { font-size: 30px; font-weight: bold; }
+  #timer.low { color: #ff3b30; }
+  #stats .row2 { font-size: 13px; color: #c9b8e8; margin-top: 2px; }
+
+  /* ---- toss meter + toast ---- */
+  #toss-meter { position: absolute; top: 118px; left: 50%; transform: translateX(-50%); width: 440px; text-align: center; }
+  #toss-meter .label { font-size: 14px; font-weight: bold; color: #39ff88; text-shadow: 0 1px 4px #000; margin-bottom: 4px; }
+  #toss-track { position: relative; height: 18px; background: rgba(0,0,0,0.55); border: 2px solid #6b4a2f; border-radius: 9px; }
+  #toss-good { position: absolute; top: 0; bottom: 0; background: rgba(255, 214, 10, 0.55); }
+  #toss-green { position: absolute; top: 0; bottom: 0; background: #39ff88; }
+  #toss-marker { position: absolute; top: -4px; bottom: -4px; width: 6px; margin-left: -3px; background: #fff; border-radius: 3px; box-shadow: 0 0 8px #fff; }
+  #toast { position: absolute; top: 162px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: bold;
+    text-shadow: 0 1px 4px #000; opacity: 0; transition: opacity 0.15s; white-space: nowrap;
+    background: rgba(20, 12, 30, 0.78); padding: 5px 18px; border-radius: 20px; }
+  #toast.show { opacity: 1; }
+  #toast.good { color: #39ff88; }
+  #toast.bad { color: #ff6b5e; }
+  #toast.info { color: #22e6ff; }
+
+  /* ---- bottom bar ---- */
+  #bottombar { position: absolute; bottom: 8px; left: 10px; right: 10px; height: 88px; display: flex; gap: 10px; pointer-events: auto; }
+  #bins { flex: 1; padding: 8px; display: flex; gap: 8px; }
+  .bin { flex: 1; background: #2b1d4d; border: 2px solid #4a3670; border-radius: 10px; color: #fff7e6;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+  .bin:hover:not(:disabled) { border-color: #ffd60a; }
+  .bin:disabled { opacity: 0.45; cursor: default; }
+  .bin.in-bowl { border-color: #39ff88; }
+  .bin .bin-name { font-size: 15px; font-weight: bold; }
+  .bin.in-bowl .bin-name::after { content: ' ✓'; color: #39ff88; }
+  .bin .bin-key { font-size: 12px; color: #c9b8e8; }
+  .dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.4); vertical-align: middle; }
+  #bowl-status { flex: 0 0 150px; padding: 8px 10px; display: flex; align-items: center; font-size: 13px; color: #c9b8e8; }
+  #bowl-status .dot { width: 12px; height: 12px; margin-right: 3px; }
+  #actions { flex: 0 0 400px; padding: 8px; display: flex; gap: 8px; align-items: stretch; }
+  #actions button { flex: 1; border-radius: 10px; border: 2px solid; font-size: 17px; font-weight: bold; color: #fff; }
+  #actions button:disabled { opacity: 0.4; cursor: default; }
+  #btn-cook { background: #b97a1e; border-color: #ffd60a; }
+  #btn-toss { background: #c65a1e; border-color: #ff7a18; }
+  #btn-serve { background: #1f7a44; border-color: #39ff88; }
+  #btn-trash { background: #5e2020; border-color: #ff6b5e; }
+
+  /* ---- screens ---- */
+  .screen { position: absolute; inset: 0; background: rgba(13, 10, 26, 0.68); pointer-events: auto; text-align: center; }
+  .screen h1 { margin: 130px 0 0; font-size: 58px; color: #ffd97a; text-shadow: 0 0 24px rgba(255, 154, 92, 0.7); letter-spacing: 2px; }
+  .screen .sub { margin: 12px 0 0; font-size: 21px; color: #fff7e6; }
+  .screen .how { margin: 26px auto 0; font-size: 17px; line-height: 1.7; color: #e8dcf5; max-width: 760px; }
+  .screen .how b { color: #39ff88; }
+  #best-line { margin-top: 18px; font-size: 17px; color: #ffd60a; }
+  .big-btn { position: absolute; left: 50%; top: 505px; transform: translate(-50%, -50%);
+    width: 300px; height: 70px; font-size: 24px; font-weight: bold; color: #fff;
+    background: #d64a7a; border: 3px solid #ff7aa8; border-radius: 14px; box-shadow: 0 0 22px rgba(214, 74, 122, 0.55); }
+  .big-btn:hover { background: #e05a8a; }
+  .screen.centered { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .screen.centered h1 { margin: 0; font-size: 48px; }
+  .screen.centered .stats-line { margin: 18px 0 0; font-size: 20px; }
+  .screen.centered .stats-line b { color: #ffd60a; }
+  .screen.centered button { margin-top: 26px; }
+  .screen.centered .big-btn { position: static; transform: none; }
+
+  #gl-error { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); background: #5e2020;
+    color: #fff; padding: 16px 24px; border-radius: 10px; font-size: 17px; text-align: center; }
   #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Neon Noodle Stall: cook noodle dishes for night-market customers before their patience runs out"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<canvas id="game" aria-label="Evening Noodle House: cook noodle dishes for evening customers before their patience runs out"></canvas>
+<div id="hud">
+  <div id="topbar">
+    <div id="brand" class="panel">
+      <h1>EVENING NOODLE HOUSE</h1>
+      <p>Dusk noodle shop &bull; wok toss &bull; SPACE = toss</p>
+    </div>
+    <div id="order-board" class="panel">
+      <h2>ORDER BOARD</h2>
+      <div id="tickets"></div>
+    </div>
+    <div id="stats" class="panel">
+      <div class="row1">SCORE <span id="score">0</span> &nbsp; <span id="timer">90s</span></div>
+      <div class="row2">Served <span id="served">0</span> &nbsp; Combo <span id="combo">x1</span></div>
+    </div>
+  </div>
+
+  <div id="toss-meter" class="hidden">
+    <div class="label">WOK TOSS — press SPACE in the green!</div>
+    <div id="toss-track"><div id="toss-good"></div><div id="toss-green"></div><div id="toss-marker"></div></div>
+  </div>
+  <div id="toast"></div>
+
+  <div id="bottombar">
+    <div id="bins" class="panel"></div>
+    <div id="bowl-status" class="panel">Bowl empty — click ingredients below</div>
+    <div id="actions" class="panel">
+      <button id="btn-cook" type="button">COOK [C]</button>
+      <button id="btn-toss" type="button">TOSS [Space]</button>
+      <button id="btn-serve" type="button">SERVE [Enter]</button>
+      <button id="btn-trash" type="button">TRASH [T]</button>
+    </div>
+  </div>
+
+  <div id="screen-title" class="screen">
+    <h1>EVENING NOODLE HOUSE</h1>
+    <p class="sub">A dusk noodle shop — serve every customer before their patience runs out.</p>
+    <p class="how">Click ingredients (or keys 1-6) to fill the bowl, cook in the wok (C),<br>
+    then <b>WOK TOSS</b>: press SPACE when the marker hits the green zone —<br>
+    a perfect toss adds flavour points and grows your combo. Serve with Enter.</p>
+    <p id="best-line">Your first shift starts at dusk.</p>
+    <button id="btn-start" class="big-btn" type="button">START COOKING</button>
+  </div>
+
+  <div id="screen-pause" class="screen centered hidden">
+    <h1>PAUSED</h1>
+    <p class="sub">Press P to continue.</p>
+    <button id="btn-resume" class="big-btn" type="button">RESUME</button>
+  </div>
+
+  <div id="screen-over" class="screen centered hidden">
+    <h1>TIME'S UP!</h1>
+    <p class="stats-line">Score: <b id="final-score">0</b> &nbsp; Served: <b id="final-served">0</b><br>
+    Best combo: <b id="final-combo">x1</b> &nbsp; Best: <b id="final-best">0</b></p>
+    <button id="btn-again" class="big-btn" type="button">COOK AGAIN [R]</button>
+  </div>
+
+  <div id="gl-error" class="hidden">WebGL is not available in this browser.<br>Please use desktop Chrome to play.</div>
+  <p id="status" role="status" aria-live="polite"></p>
+</div>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

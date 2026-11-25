@@ -1,13 +1,13 @@
 // recipes.js — the ingredients on the counter and the four noodle dishes.
-// Names, colours and icons are original to this stall; nothing here copies
-// another cooking game. render.js draws each ingredient's icon by `icon`.
+// Names, colours and icons are original to this shop; nothing here copies
+// another cooking game. render.js draws each ingredient's colour by `icon`.
 export const INGREDIENTS = [
-  { id: 'noodle', name: 'Noodle', short: 'MIE', key: '1', color: '#ffd60a', icon: 'noodle' },
+  { id: 'noodle', name: 'Noodle', short: 'NOOD', key: '1', color: '#ffd60a', icon: 'noodle' },
   { id: 'egg', name: 'Egg', short: 'EGG', key: '2', color: '#fff3b0', icon: 'egg' },
-  { id: 'chicken', name: 'Chicken', short: 'AYAM', key: '3', color: '#ff9f5a', icon: 'chicken' },
-  { id: 'chilli', name: 'Chilli', short: 'CABE', key: '4', color: '#ff3b30', icon: 'chilli' },
-  { id: 'greens', name: 'Greens', short: 'SAYUR', key: '5', color: '#39ff88', icon: 'greens' },
-  { id: 'tofu', name: 'Tofu', short: 'TAHU', key: '6', color: '#f5f0e6', icon: 'tofu' },
+  { id: 'chicken', name: 'Chicken', short: 'CHKN', key: '3', color: '#ff9f5a', icon: 'chicken' },
+  { id: 'chilli', name: 'Chilli', short: 'CHIL', key: '4', color: '#ff3b30', icon: 'chilli' },
+  { id: 'greens', name: 'Greens', short: 'GRNS', key: '5', color: '#39ff88', icon: 'greens' },
+  { id: 'tofu', name: 'Tofu', short: 'TOFU', key: '6', color: '#f5f0e6', icon: 'tofu' },
 ];
 
 export const INGREDIENT_BY_ID = Object.fromEntries(
@@ -17,25 +17,29 @@ export const INGREDIENT_BY_ID = Object.fromEntries(
 export const RECIPES = [
   {
     id: 'ayam',
-    name: 'Mie Ayam Neon',
+    name: 'Neon Chicken Noodles',
+    short: 'Chicken Noodles',
     ingredients: ['noodle', 'chicken', 'greens'],
     basePoints: 100,
   },
   {
     id: 'telur',
-    name: 'Mie Telor Pedas',
+    name: 'Spicy Egg Noodles',
+    short: 'Egg Noodles',
     ingredients: ['noodle', 'egg', 'chilli'],
     basePoints: 100,
   },
   {
     id: 'tahu',
-    name: 'Mie Tahu Hijau',
+    name: 'Green Tofu Noodles',
+    short: 'Tofu Noodles',
     ingredients: ['noodle', 'tofu', 'greens'],
     basePoints: 100,
   },
   {
     id: 'komplit',
-    name: 'Mie Komplit',
+    name: 'Noodle Supreme',
+    short: 'Noodle Supreme',
     ingredients: ['noodle', 'chicken', 'egg', 'chilli'],
     basePoints: 120,
   },

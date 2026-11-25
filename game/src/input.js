@@ -1,31 +1,13 @@
-// input.js — mouse + keyboard for Neon Noodle Stall.
-// The canvas is scaled to fit the window, so every click is mapped back
-// into the 1280x720 game space first. This module knows the clickable
-// zones (bins, wok, serve, trash, start) and turns a pointer position into
-// a game action; render.js asks it where the pointer is for hover states.
+// input.js — mouse + keyboard for Evening Noodle House.
+// The canvas is scaled to fit the window, so every pointer position is
+// mapped back into the 1280x720 game space first, then turned into a ray
+// by render.js's pick(): the ray hits the ingredient bowls on the counter,
+// the wok or the serving plate. DOM buttons (bins, COOK/TOSS/SERVE/TRASH)
+// are wired by hud.js; this module owns the 3D canvas and the keyboard.
+// Keys: 1-6 ingredients, C cook, SPACE toss, Enter plate/serve, T trash,
+// M mute, P pause, R restart.
 import { CANVAS_HEIGHT, CANVAS_WIDTH } from './config.js';
 import { INGREDIENTS } from './recipes.js';
-
-// Layout zones shared with render.js — one source of truth for hit areas.
-export const ZONES = {
-  bins: INGREDIENTS.map((ing, i) => ({
-    id: ing.id,
-    x: 40 + i * 200,
-    y: 560,
-    w: 180,
-    h: 120,
-  })),
-  wok: { x: 470, y: 330, w: 340, h: 150 },
-  bowl: { x: 120, y: 330, w: 300, h: 150 },
-  plate: { x: 860, y: 330, w: 300, h: 150 },
-  serve: { x: 880, y: 500, w: 260, h: 56 },
-  trash: { x: 140, y: 500, w: 260, h: 56 },
-  start: { x: 490, y: 470, w: 300, h: 70 },
-};
-
-export function pointInZone(x, y, zone) {
-  return x >= zone.x && x <= zone.x + zone.w && y >= zone.y && y <= zone.y + zone.h;
-}
 
 export function toGameCoords(canvas, clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
@@ -35,20 +17,30 @@ export function toGameCoords(canvas, clientX, clientY) {
   };
 }
 
-// Attach listeners. `actions` is the set of callbacks main.js wires to the
-// world (addIngredient, startCooking, toss, serve, trash, start, togglePause,
-// toggleMute, restart). Returns { pointer } for hover rendering.
-export function attachInput(canvas, world, actions, audio) {
+// Attach listeners. `pick` is render.js's raycast: (ndcX, ndcY) -> an
+// ingredient id, 'wok', 'plate', or null. Returns { pointer, hover } so
+// main.js can highlight what the mouse is over.
+export function attachInput(canvas, world, actions, audio, pick) {
   const pointer = { x: -1, y: -1, down: false };
+  const hover = { id: null };
 
   function unlockAudio() {
     if (audio && audio.unlock) audio.unlock();
+  }
+
+  function ndc(p) {
+    return {
+      x: (p.x / CANVAS_WIDTH) * 2 - 1,
+      y: 1 - (p.y / CANVAS_HEIGHT) * 2,
+    };
   }
 
   canvas.addEventListener('pointermove', (event) => {
     const p = toGameCoords(canvas, event.clientX, event.clientY);
     pointer.x = p.x;
     pointer.y = p.y;
+    const n = ndc(p);
+    hover.id = pick ? pick(n.x, n.y) : null;
   });
 
   canvas.addEventListener('pointerdown', (event) => {
@@ -57,7 +49,18 @@ export function attachInput(canvas, world, actions, audio) {
     pointer.x = p.x;
     pointer.y = p.y;
     pointer.down = true;
-    handleClick(p.x, p.y);
+    if (world.screen !== 'play') return;
+    const n = ndc(p);
+    const id = pick ? pick(n.x, n.y) : null;
+    if (!id) return;
+    if (id === 'wok') {
+      actions.startCooking();
+    } else if (id === 'plate') {
+      // A cooked wok dish plates first; a plated dish serves.
+      if (!actions.plateDish()) actions.serve();
+    } else {
+      actions.addIngredient(id);
+    }
   });
 
   canvas.addEventListener('pointerup', () => {
@@ -68,58 +71,33 @@ export function attachInput(canvas, world, actions, audio) {
     pointer.x = -1;
     pointer.y = -1;
     pointer.down = false;
+    hover.id = null;
   });
-
-  function handleClick(x, y) {
-    if (world.screen === 'title') {
-      if (pointInZone(x, y, ZONES.start)) actions.start();
-      return;
-    }
-    if (world.screen === 'over') {
-      if (pointInZone(x, y, ZONES.start)) actions.restart();
-      return;
-    }
-    if (world.screen === 'pause') {
-      actions.togglePause();
-      return;
-    }
-    // Playing: bins first, then wok / plate / serve / trash.
-    for (const bin of ZONES.bins) {
-      if (pointInZone(x, y, bin)) {
-        actions.addIngredient(bin.id);
-        return;
-      }
-    }
-    if (pointInZone(x, y, ZONES.wok)) {
-      actions.startCooking();
-      return;
-    }
-    if (pointInZone(x, y, ZONES.plate)) {
-      // A cooked wok dish plates first; a plated dish serves.
-      if (!actions.plateDish()) actions.serve();
-      return;
-    }
-    if (pointInZone(x, y, ZONES.serve)) {
-      actions.serve();
-      return;
-    }
-    if (pointInZone(x, y, ZONES.trash)) {
-      actions.trash();
-    }
-  }
 
   window.addEventListener('keydown', (event) => {
     if (event.repeat) return;
     unlockAudio();
+    // A focused button would also fire on Space/Enter — buttons are for
+    // the mouse only, so take focus away first.
+    if (document.activeElement && document.activeElement.tagName === 'BUTTON') {
+      document.activeElement.blur();
+    }
     const key = event.key.toLowerCase();
     if (key === ' ') {
       event.preventDefault();
       if (world.screen === 'play') actions.toss();
       return;
     }
-    if (world.screen === 'title' && (key === 'enter' || key === ' ')) {
-      actions.start();
-      return;
+    if (key === 'enter') {
+      event.preventDefault();
+      if (world.screen === 'title') {
+        actions.start();
+        return;
+      }
+      if (world.screen === 'play') {
+        if (!actions.plateDish()) actions.serve();
+        return;
+      }
     }
     if (world.screen === 'over' && key === 'r') {
       actions.restart();
@@ -140,12 +118,9 @@ export function attachInput(canvas, world, actions, audio) {
       return;
     }
     if (key === 'c') actions.startCooking();
-    else if (key === 'enter') {
-      if (!actions.plateDish()) actions.serve();
-    }
     else if (key === 't') actions.trash();
     else if (key === 'r') actions.restart();
   });
 
-  return { pointer };
+  return { pointer, hover };
 }
