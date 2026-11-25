@@ -190,7 +190,7 @@ function cylinderGeom(color, emis, rTop, rBottom, seg) {
   const c = hexRgb(color);
   const rt = rTop === undefined ? 0.5 : rTop;
   const rb = rBottom === undefined ? 0.5 : rBottom;
-  const s = seg || 12;
+  const s = seg || 20;
   const sideBase = 0;
   for (let i = 0; i <= s; i += 1) {
     const a = (i / s) * Math.PI * 2;
@@ -244,8 +244,8 @@ function cylinderGeom(color, emis, rTop, rBottom, seg) {
 function sphereGeom(color, emis, segW, segH) {
   const g = new Geom();
   const c = hexRgb(color);
-  const w = segW || 10;
-  const h = segH || 7;
+  const w = segW || 16;
+  const h = segH || 11;
   for (let j = 0; j <= h; j += 1) {
     const phi = (j / h) * Math.PI;
     for (let i = 0; i <= w; i += 1) {
@@ -274,7 +274,7 @@ function sphereGeom(color, emis, segW, segH) {
 function coneGeom(color, emis, seg) {
   const g = new Geom();
   const c = hexRgb(color);
-  const s = seg || 10;
+  const s = seg || 14;
   const base = 0;
   for (let i = 0; i <= s; i += 1) {
     const a = (i / s) * Math.PI * 2;
@@ -299,7 +299,7 @@ function coneGeom(color, emis, seg) {
 function discGeom(color, emis, seg) {
   const g = new Geom();
   const c = hexRgb(color);
-  const s = seg || 14;
+  const s = seg || 20;
   g.pos.push(0, 0, 0);
   g.nor.push(0, 1, 0);
   g.col.push(c[0], c[1], c[2]);
@@ -352,15 +352,18 @@ attribute vec3 aNormal;
 attribute vec3 aColor;
 attribute float aEmis;
 uniform mat4 uMVP;
+uniform mat4 uModel;
 uniform mat3 uNMat;
 uniform vec3 uTint;
 uniform float uEmisBoost;
 varying vec3 vCol;
 varying vec3 vNor;
+varying vec3 vWorld;
 varying float vEmis;
 void main() {
   gl_Position = uMVP * vec4(aPos, 1.0);
   vNor = uNMat * aNormal;
+  vWorld = (uModel * vec4(aPos, 1.0)).xyz;
   vCol = aColor * uTint;
   vEmis = min(1.0, aEmis + uEmisBoost);
 }
@@ -371,14 +374,35 @@ precision mediump float;
 uniform vec3 uLightDir;
 uniform vec3 uLightCol;
 uniform vec3 uAmb;
+uniform vec3 uCamPos;
+uniform vec3 uPointPos;
+uniform vec3 uPointCol;
+uniform float uPointFlicker;
+uniform vec3 uRimCol;
+uniform float uSpec;
 uniform float uAlpha;
 varying vec3 vCol;
 varying vec3 vNor;
+varying vec3 vWorld;
 varying float vEmis;
 void main() {
   vec3 n = normalize(vNor);
-  float diff = max(dot(n, normalize(-uLightDir)), 0.0);
-  vec3 lit = vCol * (uAmb + uLightCol * diff);
+  vec3 v = normalize(uCamPos - vWorld);
+  vec3 lightTo = normalize(-uLightDir);
+  float diff = max(dot(n, lightTo), 0.0);
+  // Warm flickering point light over the wok (flame glow).
+  vec3 pDir = uPointPos - vWorld;
+  float pDist = length(pDir);
+  float pDiff = max(dot(n, pDir / pDist), 0.0);
+  float atten = 1.0 / (1.0 + pDist * pDist * 0.9);
+  vec3 point = uPointCol * pDiff * atten * uPointFlicker;
+  // Cool rim from the dusk sky: brightens silhouette edges for depth.
+  float rimF = pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 2.5);
+  vec3 rim = uRimCol * rimF * 0.35;
+  // Blinn-Phong highlight (wok, bowls, plate).
+  vec3 h = normalize(lightTo + v);
+  float spec = pow(max(dot(n, h), 0.0), 28.0) * uSpec;
+  vec3 lit = vCol * (uAmb + uLightCol * diff + point) + rim * vCol + vec3(spec);
   vec3 c = mix(lit, vCol * 1.3, vEmis);
   gl_FragColor = vec4(c, uAlpha);
 }
@@ -456,6 +480,10 @@ function uploadMesh(gl, geom) {
 // ---------------------------------------------------------------------------
 // scene layout (world units, shared with the picking code below)
 // ---------------------------------------------------------------------------
+// Camera: 46° vertical fov — a touch tighter than the old 48° so the
+// chef reads clearly while the counter and queue stay in frame.
+const CAM_FOV = 46;
+
 export const LAYOUT = {
   counterTopY: 1.1,
   wok: [1.1, 1.3, -0.15],
@@ -501,13 +529,13 @@ function buildStaticScene() {
   for (let i = 0; i < 14; i += 1) {
     const x = -5.5 + i * (11 / 13);
     const y = 2.98 - 0.22 * Math.sin((i / 13) * Math.PI);
-    place(g, sphereGeom(bulbColors[i % 3], 1, 6, 4), x, y, -2.2, 0, 0, 0, 0.14, 0.14, 0.14);
+    place(g, sphereGeom(bulbColors[i % 3], 1, 8, 6), x, y, -2.2, 0, 0, 0, 0.14, 0.14, 0.14);
   }
   // Paper lanterns.
   const lanterns = [[-3.6, '#ff5a3c'], [0, '#ff7a2a'], [2.9, '#ff4d6d']];
   for (const [x, color] of lanterns) {
     place(g, boxGeom('#3a2a1a'), x, 2.75, -2.1, 0, 0, 0, 0.04, 0.5, 0.04);
-    place(g, sphereGeom(color, 0.9, 10, 7), x, 2.35, -2.1, 0, 0, 0, 0.55, 0.68, 0.55);
+    place(g, sphereGeom(color, 0.9, 14, 10), x, 2.35, -2.1, 0, 0, 0, 0.55, 0.68, 0.55);
   }
   // Menu board with chalk lines.
   place(g, boxGeom('#2a1a2e'), 4.0, 2.1, -2.38, 0, 0, 0, 1.7, 1.15, 0.06);
@@ -567,12 +595,19 @@ export function createRenderer(gl) {
     aColor: gl.getAttribLocation(prog, 'aColor'),
     aEmis: gl.getAttribLocation(prog, 'aEmis'),
     uMVP: gl.getUniformLocation(prog, 'uMVP'),
+    uModel: gl.getUniformLocation(prog, 'uModel'),
     uNMat: gl.getUniformLocation(prog, 'uNMat'),
     uTint: gl.getUniformLocation(prog, 'uTint'),
     uEmisBoost: gl.getUniformLocation(prog, 'uEmisBoost'),
     uLightDir: gl.getUniformLocation(prog, 'uLightDir'),
     uLightCol: gl.getUniformLocation(prog, 'uLightCol'),
     uAmb: gl.getUniformLocation(prog, 'uAmb'),
+    uCamPos: gl.getUniformLocation(prog, 'uCamPos'),
+    uPointPos: gl.getUniformLocation(prog, 'uPointPos'),
+    uPointCol: gl.getUniformLocation(prog, 'uPointCol'),
+    uPointFlicker: gl.getUniformLocation(prog, 'uPointFlicker'),
+    uRimCol: gl.getUniformLocation(prog, 'uRimCol'),
+    uSpec: gl.getUniformLocation(prog, 'uSpec'),
     uAlpha: gl.getUniformLocation(prog, 'uAlpha'),
   };
   const pLoc = {
@@ -584,13 +619,13 @@ export function createRenderer(gl) {
 
   const staticMesh = uploadMesh(gl, buildStaticScene());
   const meshBox = uploadMesh(gl, boxGeom('#ffffff'));
-  const meshSphere = uploadMesh(gl, sphereGeom('#ffffff', 0, 10, 7));
-  const meshCyl = uploadMesh(gl, cylinderGeom('#ffffff', 0, 0.5, 0.5, 12));
-  const meshCone = uploadMesh(gl, coneGeom('#ffffff', 0, 10));
+  const meshSphere = uploadMesh(gl, sphereGeom('#ffffff', 0, 16, 11));
+  const meshCyl = uploadMesh(gl, cylinderGeom('#ffffff', 0, 0.5, 0.5, 20));
+  const meshCone = uploadMesh(gl, coneGeom('#ffffff', 0, 14));
   const meshDisc = uploadMesh(gl, discGeom('#000000'));
   // Wok: a shallow dark bowl (wide top, narrow base).
   const wokGeom = new Geom();
-  place(wokGeom, cylinderGeom('#1c1c22', 0, 0.55, 0.28, 14), 0, 0, 0, 0, 0, 0, 1.1, 0.22, 1.1);
+  place(wokGeom, cylinderGeom('#1c1c22', 0, 0.55, 0.28, 20), 0, 0, 0, 0, 0, 0, 1.1, 0.22, 1.1);
   const meshWok = uploadMesh(gl, wokGeom);
   // Chef arm: a box whose top sits at the origin (pivot = shoulder).
   const armGeom = new Geom();
@@ -599,7 +634,7 @@ export function createRenderer(gl) {
 
   // Steam point buffer (rewritten every frame).
   const steamVbo = gl.createBuffer();
-  const STEAM_N = 22;
+  const STEAM_N = 34;
 
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
@@ -617,12 +652,14 @@ export function createRenderer(gl) {
   let lastEye = [0, 3.4, 8.2];
   let lastCenter = [0, 1.15, -0.4];
 
-  function draw(mesh, model, tint, emisBoost, alpha) {
+  function draw(mesh, model, tint, emisBoost, alpha, spec) {
     gl.useProgram(prog);
     gl.uniformMatrix4fv(loc.uMVP, false, mat4Multiply(lastVP, model));
+    gl.uniformMatrix4fv(loc.uModel, false, model);
     gl.uniformMatrix3fv(loc.uNMat, false, mat3FromMat4(model));
     gl.uniform3fv(loc.uTint, tint);
     gl.uniform1f(loc.uEmisBoost, emisBoost || 0);
+    gl.uniform1f(loc.uSpec, spec || 0);
     gl.uniform1f(loc.uAlpha, alpha === undefined ? 1 : alpha);
     gl.bindBuffer(gl.ARRAY_BUFFER, mesh.vbo);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.ibo);
@@ -642,15 +679,15 @@ export function createRenderer(gl) {
   function drawSteam(x, y, z, t) {
     const data = new Float32Array(STEAM_N * 5);
     for (let i = 0; i < STEAM_N; i += 1) {
-      const phase = (t * 0.32 + i * 0.371) % 1;
-      const px = x + Math.sin(phase * 9 + i * 2.1) * 0.14 * phase;
-      const py = y + phase * 1.15;
-      const pz = z + Math.cos(phase * 7 + i * 1.7) * 0.1 * phase;
+      const phase = (t * 0.22 + i * 0.371) % 1;
+      const px = x + Math.sin(phase * 9 + i * 2.1) * 0.17 * phase;
+      const py = y + phase * 1.25;
+      const pz = z + Math.cos(phase * 7 + i * 1.7) * 0.12 * phase;
       data[i * 5] = px;
       data[i * 5 + 1] = py;
       data[i * 5 + 2] = pz;
-      data[i * 5 + 3] = 12 + phase * 30;
-      data[i * 5 + 4] = 0.5 * (1 - phase);
+      data[i * 5 + 3] = 14 + phase * 36;
+      data[i * 5 + 4] = 0.55 * (1 - phase);
     }
     gl.useProgram(pointProg);
     gl.uniformMatrix4fv(pLoc.uMVP, false, lastVP);
@@ -667,6 +704,10 @@ export function createRenderer(gl) {
     gl.depthMask(true);
   }
 
+  // The chef is the star: built in a local frame scaled 1.3x about his
+  // feet (then dropped 0.4 so his torso still sits on the counter top).
+  const CHEF_SCALE = 1.3;
+
   function drawChef(world, fx, t) {
     const [bx, , bz] = LAYOUT.chef;
     const cooking = !!(world.wok && !world.wok.done && !world.wok.burnt);
@@ -676,19 +717,33 @@ export function createRenderer(gl) {
     const bob = Math.sin(t * 1.8) * 0.02;
     const lean = cooking ? 0.08 : 0;
     const lift = 0.15; // stands a little taller so the arms clear the counter
-    // Blob shadow.
-    draw(meshDisc, compose(bx, 0.02, bz, 0, 0, 0, 1.15, 1, 1.15), [0, 0, 0], 0, 0.3);
-    // Torso + apron.
-    draw(meshBox, compose(bx, 1.45 + lift + bob, bz, lean, 0, 0, 0.62, 0.85, 0.36), hexRgb('#f5f0e6'), 0, 1);
-    draw(meshBox, compose(bx, 1.42 + lift + bob, bz + 0.19, lean, 0, 0, 0.5, 0.7, 0.05), hexRgb('#b84a3a'), 0, 1);
-    // Head, eyes, moustache.
-    draw(meshSphere, compose(bx, 2.05 + lift + bob, bz, 0, 0, 0, 0.52, 0.52, 0.52), hexRgb(SKIN), 0, 1);
-    draw(meshSphere, compose(bx - 0.09, 2.08 + lift + bob, bz + 0.22, 0, 0, 0, 0.05, 0.05, 0.05), hexRgb(DARK), 0, 1);
-    draw(meshSphere, compose(bx + 0.09, 2.08 + lift + bob, bz + 0.22, 0, 0, 0, 0.05, 0.05, 0.05), hexRgb(DARK), 0, 1);
-    draw(meshBox, compose(bx, 1.97 + lift + bob, bz + 0.23, 0, 0, 0, 0.16, 0.04, 0.03), hexRgb(DARK), 0, 1);
-    // Chef hat.
-    draw(meshCyl, compose(bx, 2.28 + lift + bob, bz, 0, 0, 0, 0.48, 0.2, 0.48), WHITE, 0, 1);
-    draw(meshSphere, compose(bx, 2.42 + lift + bob, bz, 0, 0, 0, 0.56, 0.34, 0.56), WHITE, 0, 1);
+    const chefM = compose(bx, -0.4, bz, 0, 0, 0, CHEF_SCALE, CHEF_SCALE, CHEF_SCALE);
+    const part = (mesh, local, tint, emisBoost, alpha, spec) => {
+      draw(mesh, mat4Multiply(chefM, local), tint, emisBoost, alpha, spec);
+    };
+    // Blob shadow: a soft outer halo plus a darker core.
+    draw(meshDisc, compose(bx, 0.02, bz, 0, 0, 0, 2.1, 1, 2.1), [0, 0, 0], 0, 0.12);
+    draw(meshDisc, compose(bx, 0.02, bz, 0, 0, 0, 1.5, 1, 1.5), [0, 0, 0], 0, 0.32);
+    // Torso + apron + pocket + neckerchief.
+    part(meshBox, compose(0, 1.45 + lift + bob, 0, lean, 0, 0, 0.62, 0.85, 0.36), hexRgb('#f5f0e6'), 0, 1, 0.15);
+    part(meshBox, compose(0, 1.42 + lift + bob, 0.19, lean, 0, 0, 0.5, 0.7, 0.05), hexRgb('#b84a3a'), 0, 1);
+    part(meshBox, compose(0.12, 1.32 + lift + bob, 0.225, lean, 0, 0, 0.18, 0.14, 0.03), hexRgb('#8a3527'), 0, 1);
+    part(meshBox, compose(0, 1.88 + lift + bob, 0.19, lean, 0, 0, 0.2, 0.08, 0.06), hexRgb('#b84a3a'), 0, 1);
+    // Head, eyes (+ shine), moustache, smile.
+    part(meshSphere, compose(0, 2.05 + lift + bob, 0, 0, 0, 0, 0.52, 0.52, 0.52), hexRgb(SKIN), 0, 1);
+    part(meshSphere, compose(-0.09, 2.08 + lift + bob, 0.22, 0, 0, 0, 0.055, 0.055, 0.055), hexRgb(DARK), 0, 1);
+    part(meshSphere, compose(0.09, 2.08 + lift + bob, 0.22, 0, 0, 0, 0.055, 0.055, 0.055), hexRgb(DARK), 0, 1);
+    part(meshSphere, compose(-0.105, 2.095 + lift + bob, 0.26, 0, 0, 0, 0.018, 0.018, 0.018), WHITE, 0, 1);
+    part(meshSphere, compose(0.075, 2.095 + lift + bob, 0.26, 0, 0, 0, 0.018, 0.018, 0.018), WHITE, 0, 1);
+    part(meshBox, compose(0, 1.97 + lift + bob, 0.23, 0, 0, 0, 0.16, 0.04, 0.03), hexRgb(DARK), 0, 1);
+    part(meshSphere, compose(-0.05, 1.9 + lift + bob, 0.235, 0, 0, 0, 0.02, 0.02, 0.02), hexRgb(DARK), 0, 1);
+    part(meshSphere, compose(0, 1.885 + lift + bob, 0.235, 0, 0, 0, 0.02, 0.02, 0.02), hexRgb(DARK), 0, 1);
+    part(meshSphere, compose(0.05, 1.9 + lift + bob, 0.235, 0, 0, 0, 0.02, 0.02, 0.02), hexRgb(DARK), 0, 1);
+    // Chef hat: band, fold ring, two puffs.
+    part(meshCyl, compose(0, 2.28 + lift + bob, 0, 0, 0, 0, 0.48, 0.2, 0.48), WHITE, 0, 1, 0.1);
+    part(meshCyl, compose(0, 2.22 + lift + bob, 0, 0, 0, 0, 0.53, 0.07, 0.53), WHITE, 0, 1, 0.1);
+    part(meshSphere, compose(0, 2.42 + lift + bob, 0, 0, 0, 0, 0.56, 0.34, 0.56), WHITE, 0, 1, 0.1);
+    part(meshSphere, compose(0.12, 2.48 + lift + bob, 0, 0, 0, 0, 0.34, 0.24, 0.34), WHITE, 0, 1, 0.1);
     // Arms: [rx, rz] per state, right arm first.
     let right = [0.15, -0.12];
     let left = [0.15, 0.12];
@@ -705,25 +760,44 @@ export function createRenderer(gl) {
       right = [-0.9, -0.1]; // reaching forward over the counter
       left = [0.15, 0.12];
     }
-    const shoulders = [[bx + 0.36, 1.78 + lift + bob, bz, right], [bx - 0.36, 1.78 + lift + bob, bz, left]];
+    const shoulders = [[0.36, 1.78 + lift + bob, 0, right], [-0.36, 1.78 + lift + bob, 0, left]];
     for (const [sx, sy, sz, angles] of shoulders) {
       const armM = compose(sx, sy, sz, angles[0], 0, angles[1], 1, 1, 1);
       // Rolled-up sleeves: skin arms read against the white shirt.
-      draw(meshArm, armM, hexRgb(SKIN), 0, 1);
+      part(meshArm, armM, hexRgb(SKIN), 0, 1);
       const hand = transformPoint(armM, [0, -0.62, 0]);
-      draw(meshSphere, compose(hand[0], hand[1], hand[2], 0, 0, 0, 0.18, 0.18, 0.18), hexRgb(SKIN), 0, 1);
+      part(meshSphere, compose(hand[0], hand[1], hand[2], 0, 0, 0, 0.18, 0.18, 0.18), hexRgb(SKIN), 0, 1);
     }
   }
 
   function drawCustomer(c, t, alpha) {
     const hop = c.hop || 0;
     const y = c.y + hop;
-    draw(meshDisc, compose(c.x, 0.02, c.z, 0, 0, 0, 0.9, 1, 0.9), [0, 0, 0], 0, 0.3 * alpha);
+    draw(meshDisc, compose(c.x, 0.02, c.z, 0, 0, 0, 1.35, 1, 1.35), [0, 0, 0], 0, 0.12 * alpha);
+    draw(meshDisc, compose(c.x, 0.02, c.z, 0, 0, 0, 1.0, 1, 1.0), [0, 0, 0], 0, 0.32 * alpha);
     draw(meshBox, compose(c.x, 0.95 + y, c.z, 0, 0, 0, 0.55, 0.8, 0.34), hexRgb(c.shirt), 0, alpha);
+    // Collar + two shirt buttons.
+    draw(meshBox, compose(c.x, 1.36 + y, c.z + 0.17, 0, 0, 0, 0.3, 0.07, 0.05), WHITE, 0, alpha);
+    draw(meshSphere, compose(c.x, 1.05 + y, c.z + 0.18, 0, 0, 0, 0.03, 0.03, 0.03), hexRgb(DARK), 0, alpha);
+    draw(meshSphere, compose(c.x, 0.85 + y, c.z + 0.18, 0, 0, 0, 0.03, 0.03, 0.03), hexRgb(DARK), 0, alpha);
     draw(meshSphere, compose(c.x, 1.62 + y, c.z, 0, 0, 0, 0.48, 0.48, 0.48), hexRgb(c.skin), 0, alpha);
-    draw(meshSphere, compose(c.x, 1.74 + y, c.z, 0, 0, 0, 0.5, 0.3, 0.5), hexRgb(c.hair), 0, alpha);
-    draw(meshSphere, compose(c.x - 0.08, 1.64 + y, c.z + 0.2, 0, 0, 0, 0.045, 0.045, 0.045), hexRgb(DARK), 0, alpha);
-    draw(meshSphere, compose(c.x + 0.08, 1.64 + y, c.z + 0.2, 0, 0, 0, 0.045, 0.045, 0.045), hexRgb(DARK), 0, alpha);
+    // Hair, varied per customer: cap, bun, spiky, flat-top.
+    const style = c.hairStyle || 0;
+    if (style === 1) {
+      draw(meshSphere, compose(c.x, 1.74 + y, c.z, 0, 0, 0, 0.5, 0.3, 0.5), hexRgb(c.hair), 0, alpha);
+      draw(meshSphere, compose(c.x, 1.88 + y, c.z - 0.1, 0, 0, 0, 0.2, 0.2, 0.2), hexRgb(c.hair), 0, alpha);
+    } else if (style === 2) {
+      draw(meshSphere, compose(c.x, 1.74 + y, c.z, 0, 0, 0, 0.5, 0.3, 0.5), hexRgb(c.hair), 0, alpha);
+      draw(meshCone, compose(c.x - 0.14, 1.92 + y, c.z, 0, 0, -0.3, 0.14, 0.22, 0.14), hexRgb(c.hair), 0, alpha);
+      draw(meshCone, compose(c.x, 1.95 + y, c.z, 0, 0, 0, 0.14, 0.24, 0.14), hexRgb(c.hair), 0, alpha);
+      draw(meshCone, compose(c.x + 0.14, 1.92 + y, c.z, 0, 0, 0.3, 0.14, 0.22, 0.14), hexRgb(c.hair), 0, alpha);
+    } else if (style === 3) {
+      draw(meshBox, compose(c.x, 1.8 + y, c.z, 0, 0, 0, 0.46, 0.16, 0.46), hexRgb(c.hair), 0, alpha);
+    } else {
+      draw(meshSphere, compose(c.x, 1.74 + y, c.z, 0, 0, 0, 0.5, 0.3, 0.5), hexRgb(c.hair), 0, alpha);
+    }
+    draw(meshSphere, compose(c.x - 0.08, 1.64 + y, c.z + 0.2, 0, 0, 0, 0.05, 0.05, 0.05), hexRgb(DARK), 0, alpha);
+    draw(meshSphere, compose(c.x + 0.08, 1.64 + y, c.z + 0.2, 0, 0, 0, 0.05, 0.05, 0.05), hexRgb(DARK), 0, alpha);
     // Mood bubble above the head.
     const moodY = 1.98 + y + Math.sin(t * 2 + c.x) * 0.03;
     draw(meshSphere, compose(c.x, moodY, c.z, 0, 0, 0, 0.18, 0.18, 0.18), hexRgb(MOOD_COLORS[c.face] || '#39ff88'), 0.7, alpha);
@@ -757,6 +831,7 @@ export function createRenderer(gl) {
           shirt: SHIRT_COLORS[hash % SHIRT_COLORS.length],
           skin: SKIN_COLORS[hash % SKIN_COLORS.length],
           hair: HAIR_COLORS[hash % HAIR_COLORS.length],
+          hairStyle: hash % 4,
         };
       }
       const c = custById[ticket.id];
@@ -777,12 +852,12 @@ export function createRenderer(gl) {
 
   function render(world, hoverId, fx, animTime, dt) {
     const t = animTime;
-    const eye = [Math.sin(t * 0.25) * 0.12, 3.4 + Math.sin(t * 0.4) * 0.04, 8.2];
-    const center = [0, 1.15, -0.4];
+    const eye = [Math.sin(t * 0.25) * 0.12, 3.35 + Math.sin(t * 0.4) * 0.04, 8.2];
+    const center = [0, 1.15, -0.3];
     lastEye = eye;
     lastCenter = center;
     const view = mat4LookAt(eye, center, [0, 1, 0]);
-    const proj = mat4Perspective((48 * Math.PI) / 180, 1280 / 720, 0.1, 60);
+    const proj = mat4Perspective((CAM_FOV * Math.PI) / 180, 1280 / 720, 0.1, 60);
     lastVP = mat4Multiply(proj, view);
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -790,9 +865,19 @@ export function createRenderer(gl) {
     gl.uniform3fv(loc.uLightDir, [0.36, -0.72, -0.54]);
     gl.uniform3fv(loc.uLightCol, [1.0, 0.85, 0.65]);
     gl.uniform3fv(loc.uAmb, [0.45, 0.38, 0.44]);
+    gl.uniform3fv(loc.uCamPos, eye);
+    gl.uniform3fv(loc.uPointPos, [LAYOUT.wok[0], LAYOUT.wok[1] + 1.3, LAYOUT.wok[2]]);
+    gl.uniform3fv(loc.uPointCol, [1.0, 0.55, 0.2]);
+    // Flame flicker — a pure function of the (frozen in shot mode) clock,
+    // so staged frames stay deterministic.
+    gl.uniform1f(loc.uPointFlicker, 1.5 + 0.3 * Math.sin(t * 11) + 0.2 * Math.sin(t * 23 + 1.7));
+    gl.uniform3fv(loc.uRimCol, [0.55, 0.55, 0.9]);
 
     // Static shop.
     draw(staticMesh, mat4Identity(), WHITE, 0, 1);
+    // Soft contact gradient under the counter front.
+    draw(meshDisc, compose(0, 0.015, 0.95, 0, 0, 0, 11, 1, 2.2), [0, 0, 0], 0, 0.14);
+    draw(meshDisc, compose(0, 0.015, 0.9, 0, 0, 0, 10, 1, 1.4), [0, 0, 0], 0, 0.26);
 
     // Serve animation: a bowl slides from the plate to the front customer.
     if (world.served > lastServed && !serveAnim) serveAnim = { t: 0 };
@@ -814,14 +899,14 @@ export function createRenderer(gl) {
       const [x, y, z] = LAYOUT.bins[i];
       const hovered = hoverId === ing.id;
       const s = hovered ? 1.12 : 1;
-      draw(meshCyl, compose(x, y, z, 0, 0, 0, 0.52 * s, 0.14, 0.52 * s), hexRgb('#f5f0e6'), hovered ? 0.3 : 0, 1);
+      draw(meshCyl, compose(x, y, z, 0, 0, 0, 0.52 * s, 0.14, 0.52 * s), hexRgb('#f5f0e6'), hovered ? 0.3 : 0, 1, 0.5);
       draw(meshSphere, compose(x, y + 0.09, z, 0, 0, 0, 0.34 * s, 0.2, 0.34 * s), hexRgb(ing.color), hovered ? 0.3 : 0, 1);
     });
 
     // Assembly bowl + its contents.
     const [bx2, by2, bz2] = LAYOUT.bowl;
-    draw(meshCyl, compose(bx2, by2, bz2, 0, 0, 0, 0.68, 0.18, 0.68), hexRgb('#f5f0e6'), 0, 1);
-    draw(meshCyl, compose(bx2, by2 + 0.09, bz2, 0, 0, 0, 0.76, 0.05, 0.76), hexRgb('#f5f0e6'), 0, 1);
+    draw(meshCyl, compose(bx2, by2, bz2, 0, 0, 0, 0.68, 0.18, 0.68), hexRgb('#f5f0e6'), 0, 1, 0.5);
+    draw(meshCyl, compose(bx2, by2 + 0.09, bz2, 0, 0, 0, 0.76, 0.05, 0.76), hexRgb('#f5f0e6'), 0, 1, 0.5);
     world.bowl.forEach((id, i) => {
       const a = i * 2.4 + 0.6;
       draw(
@@ -842,7 +927,7 @@ export function createRenderer(gl) {
     if (tossing) wokY += fx.flame * 0.3;
     if (cooking) wokTilt = Math.sin(t * 7) * 0.05;
     const hoverWok = hoverId === 'wok';
-    draw(meshWok, compose(wx, wokY, wz, 0, 0, wokTilt, 1, 1, 1), WHITE, hoverWok ? 0.25 : 0, 1);
+    draw(meshWok, compose(wx, wokY, wz, 0, 0, wokTilt, 1, 1, 1), WHITE, hoverWok ? 0.25 : 0, 1, 0.7);
     if (world.wok) {
       const burnt = world.wok.burnt;
       const noodleTint = hexRgb(burnt ? '#3a2a1a' : '#ffd60a');
@@ -878,7 +963,7 @@ export function createRenderer(gl) {
     // Serving plate (+ a glowing marker while a dish waits).
     const [px, py, pz] = LAYOUT.plate;
     const hoverPlate = hoverId === 'plate';
-    draw(meshCyl, compose(px, py, pz, 0, 0, 0, 0.84, 0.06, 0.84), hexRgb('#fdfdfd'), hoverPlate ? 0.3 : 0, 1);
+    draw(meshCyl, compose(px, py, pz, 0, 0, 0, 0.84, 0.06, 0.84), hexRgb('#fdfdfd'), hoverPlate ? 0.3 : 0, 1, 0.6);
     if (world.plate) {
       draw(meshSphere, compose(px, py + 0.08, pz, 0, 0, 0, 0.6, 0.2, 0.6), hexRgb('#ffd60a'), 0, 1);
       world.plate.recipe.ingredients.forEach((id, i) => {
@@ -913,7 +998,7 @@ export function createRenderer(gl) {
     const f = vec3Norm(vec3Sub(lastCenter, lastEye));
     const r = vec3Norm(vec3Cross(f, [0, 1, 0]));
     const u = vec3Cross(r, f);
-    const tanV = Math.tan((48 * Math.PI / 180) / 2);
+    const tanV = Math.tan((CAM_FOV * Math.PI / 180) / 2);
     const tanH = tanV * (1280 / 720);
     const dir = vec3Norm([
       f[0] + r[0] * ndcX * tanH + u[0] * ndcY * tanV,
